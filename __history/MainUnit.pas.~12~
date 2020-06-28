@@ -1,0 +1,506 @@
+unit MainUnit;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, StdCtrls, math;
+
+type
+  ByteArray = array of byte;
+  TTi = class(TForm)
+    ODLoadFromFile: TOpenDialog;
+    ButtonLoadText: TButton;
+    ButtonEncryption: TButton;
+    memoKeyGenerated: TMemo;
+    MemoText: TMemo;
+    MemoEncodedTex: TMemo;
+    LabelKey: TLabel;
+    LabelText: TLabel;
+    LabelEncodedText: TLabel;
+    SDSaveToFile: TSaveDialog;
+    RadioButtonGeffe: TRadioButton;
+    RadioButtonRC4: TRadioButton;
+    RadioButtonLFSR: TRadioButton;
+    EditLFSR1: TEdit;
+    EditLFSR2: TEdit;
+    EditLFSR3: TEdit;
+    Label2: TLabel;
+    Label3: TLabel;
+    Label4: TLabel;
+    Label5: TLabel;
+    EditRC4Key: TEdit;
+    procedure ButtonLoadTextClick(Sender: TObject);
+    procedure ButtonEncryptionClick(Sender: TObject);
+    procedure MemoTextKeyPress(Sender: TObject; var Key: Char);
+    procedure FormCreate(Sender: TObject);
+    procedure EditLFSR1KeyPress(Sender: TObject; var Key: Char);
+    procedure EditLFSR2KeyPress(Sender: TObject; var Key: Char);
+    procedure EditLFSR3KeyPress(Sender: TObject; var Key: Char);
+    procedure EditRC4KeyKeyPress(Sender: TObject; var Key: Char);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+const lengthLFSR = 29;
+const lengthLFSR2 = 37;
+const lengthLFSR3 = 27;
+var
+  Ti: TTi;
+  counter : byte;
+  inputFile : File of Byte;
+  BinEncodedText, EncodedText : string;
+  LFSRs : array [1..3] of string;
+  lengthLFSRs : array [1..3] of byte;
+
+implementation
+
+{$R *.dfm}
+
+
+function HexToBin (inputHex : string): string;
+var
+   i : byte;
+begin
+   result := '';
+   for i := 1 to length(inputHex) do
+       case inputHex[i] of
+          '0': result := result + '0000';
+          '1': result := result + '0001';
+          '2': result := result + '0010';
+          '3': result := result + '0011';
+          '4': result := result + '0100';
+          '5': result := result + '0101';
+          '6': result := result + '0110';
+          '7': result := result + '0111';
+          '8': result := result + '1000';
+          '9': result := result + '1001';
+          'A': result := result + '1010';
+          'B': result := result + '1011';
+          'C': result := result + '1100';
+          'D': result := result + '1101';
+          'E': result := result + '1110';
+          'F': result := result + '1111';
+       end;
+end;
+
+
+
+
+function BinToHex(inputBin : string):string;
+var
+   temp : string[4];
+   i : integer;
+begin
+   result := '';
+   i := 0;
+   while (i <> length(inputBin)) do
+   begin
+      temp := copy(inputBin, i + 1, 4);
+      case StrToInt(temp) of
+         0000: result := result + '0';
+         0001: result := result + '1';
+         0010: result := result + '2';
+         0011: result := result + '3';
+         0100: result := result + '4';
+         0101: result := result + '5';
+         0110: result := result + '6';
+         0111: result := result + '7';
+         1000: result := result + '8';
+         1001: result := result + '9';
+         1010: result := result + 'A';
+         1011: result := result + 'B';
+         1100: result := result + 'C';
+         1101: result := result + 'D';
+         1110: result := result + 'E';
+         1111: result := result + 'F';
+      end;
+      i := i + 4;
+   end;
+end;
+
+
+
+procedure BinToText(var input : string);
+var
+   i : int64;
+   temp : string[8];
+   tempByte : byte;
+   res : string;
+begin
+   i := 1;
+
+   res := '';
+   while(i <= Length(input)) do
+   begin
+      temp := Copy(input, i, 8);
+
+      temp := BinToHex(temp);
+      tempByte := StrToInt('$' + temp);
+      res := res + chr(tempByte);
+      i := i + 8;
+   end;
+   input := res;
+end;
+
+
+function xorr(first, second : string):string;
+begin
+   if ((first = '1') and (second = '0')) or
+      ((first = '0') and (second = '1')) then
+      result := '1'
+   else
+      result := '0';
+end;
+
+function Encryption(key, information : string):string;
+var
+   i : int64;
+begin
+   result := '';
+   i := 1;
+   //for i := 1 to length(key) do
+   while (i <= length(key)) do
+   begin
+      result := result + xorr(key[i], information[i]);
+      inc(i);
+   end;
+end;
+
+function LFSR(var input : string; length : int64 ):string;
+var
+   temp, temp2, temp3 : byte;
+begin
+   temp2:= 0;
+   case length of
+   29: temp := 1;
+   37:
+   begin
+      temp := 1;
+      temp2 := 9;
+   end;
+   27:
+   begin
+      temp := 0;
+   end;
+   end;
+   if temp2=0 then
+      result := xorr(input[1], input[length - temp])
+   else
+      result := xorr(input[1], input[length - temp]) +
+   delete(input, 1, 1);
+   input := input + result;
+end;
+
+
+function ReadFormFile(var Text : string; size : integer):string;
+var
+   temp : byte;
+   i : int64;
+begin
+   text := '';
+   result := '';
+   //showmessage(IntTostr(size));
+   //for i := 1 to size do
+   i := 1;
+   while (i <= size) do
+   begin
+      Read(inputFile, temp);
+      text := text + chr(temp);
+      result := result + HexToBin(IntToHex(temp, 2));
+      inc(i);
+   end;
+   Ti.MemoText.Lines.Add(result);
+   CloseFile(inputFile);
+end;
+
+procedure TTi.ButtonLoadTextClick(Sender: TObject);
+begin
+   if ODLoadFromFile.Execute then
+   begin
+      AssignFile(inputFile, ODLoadFromFile.FileName);
+      ButtonEncryption.Enabled := true;
+   end
+   else
+      showmessage('Выберите путь к файлу');
+end;
+
+function EncryprionGeffe(LFSRKey, LFSRKey2, LFSRKey3 : string):string;
+var
+   i : int64;
+   tempOne , tempTwo : string;
+begin
+    result := '';
+    i := 1;
+    while(i <= length(LFSRKEy)) do
+    //for i := 1 to length(LFSRKey) do
+    begin
+       if (LFSRKey[i] = '1') and (LFSRKey2[i] = '1') then
+           tempOne := '1'
+       else
+          tempOne := '0';
+       if (LFSRKey[i] = '0') and (LFSRKey3[i] = '1') then
+          tempTwo := '1'
+       else
+          tempTwo := '0';
+       if (tempOne = '1') or (tempTwo = '1') then
+          result := result + '1'
+       else
+          result := result + '0';
+       inc(i);
+    end;
+end;
+
+
+function GenerateKeyLFSR(SizeFile : integer; Counter : byte; information : string; Edit : TEdit):string;
+var
+   temp : integer;
+   i : int64;
+   key, LFSRKey : string;
+begin
+   key := '';
+   temp := (SizeFile * 8) div lengthLFSRs[counter];
+   if (SizeFile * 8) mod lengthLFSRs[counter] <> 0 then
+      inc(temp);
+   LFSRs[counter] := Edit.Text;
+   LFSRKey := LFSRs[counter];
+   key := LFSRkey;
+   //for i := 1 to (temp - 1) * lengthLFSRs[counter] do
+   i := 1;
+   while (i <= (temp - 1) * lengthLFSRs[counter]) do
+   begin
+      key := key + LFSR(LFSRKey, lengthLFSRs[counter]);
+      inc(i);
+   end;
+   Delete(key, length(information) + 1,length(key) - length(information));
+   result := key;
+end;
+
+procedure Swap(var parOne : byte; var parTwo : byte);
+var
+   temp : integer;
+begin
+   temp := parOne;
+   parOne := parTwo;
+   parTwo := temp;
+end;
+
+procedure ReadKeys(keys : string; var lengthKey : integer;var result : ByteArray);
+var
+   i : int64;
+   temp : string;
+begin
+   lengthKey := 1;
+   temp := '';
+   //j := 1;
+   i := 1;
+   while (i <= length(keys)) do
+   //for i := 1 to length(keys) do
+   begin
+      if (keys[i] <> ' ') then
+      begin
+         temp := temp + keys[i];
+         //inc(j);
+      end
+      else
+      begin
+         if temp <> ' ' then
+         begin
+            Setlength(result, lengthKey);
+            result[lengthKey - 1] := StrToint(temp);
+            inc(lengthKey);
+            temp := '';
+            //j := 1;
+         end;
+      end;
+      inc(i);
+   end;
+   if temp <> '' then
+   begin
+      Setlength(result, lengthKey);
+      result[lengthKey - 1] := StrToint(temp);
+   end
+   else
+      dec(lengthKey);
+
+end;
+
+function RC4(key : string; lengthKey : integer; text : string):string;
+var
+   S : array [0..255] of byte;
+   digit : ByteArray;
+   i, j : byte;
+   temp : byte;
+   counter : int64;
+begin
+   ReadKeys(key, lengthKey, digit);
+   //SetLength(digit, lengthKey);
+   //for i := 0 to lengthKey - 1 do
+     // digit[i] := StrToInt(key[i + 1]);
+   for i := 0 to 255 do
+      S[i] := i;
+   j := 0;
+
+   for i := 0 to 255 do
+   begin
+      j := (j + S[i] + digit[i mod lengthKey] ) mod 256;
+      //j := (j + S[i] + StrToInt(key[ (i mod lengthKey ) + 1]) ) mod 256;
+      Swap(S[i], S[j]);
+   end;
+   key := '';
+   result := '';
+   counter := 1;
+   i := 0;
+   j := 0;
+   //for counter := 1 to length(text) do
+   while (counter <= length(text)) do
+   begin
+      i := (i + 1) mod 256;
+      j := (j + S[i]) mod 256;
+      Swap(S[i], S[j]);
+      temp := S[(S[i] + S[j]) mod 256];
+      key := key + IntToStr(temp);
+      result := result + chr(temp xor ord(text[counter]));
+      inc(counter);
+   end;
+   Ti.memoKeyGenerated.Lines.Text := key;
+end;
+
+procedure SaveToFileEncodedInformation(input : string);
+var
+   outputFile : TextFile;
+begin
+   with Ti do
+   begin
+      SDSaveToFile.FileName := '';
+      While SDSaveToFile.FileName = '' do
+      if SDSaveToFile.Execute then
+      begin
+        // MemoEncodedBinaryText.Lines.SaveToFile(SDSaveToFile.FileName);
+         assignFile(outputFile, SDSaveToFile.FileName);
+         Rewrite(outputFile);
+         Write(outputFile, input);
+         closefile(outputfile);
+      end
+      else
+         showmessage('Выберите файл');
+      end;
+end;
+
+procedure TTi.ButtonEncryptionClick(Sender: TObject);
+var
+   key, information, text : string;
+   LFSRKey, LFSRKey2, LFSRKey3 : string;
+   SizeOfFile, i : integer;
+begin
+   MemoText.Clear;
+   memoKeyGenerated.Clear;
+   MemoEncodedTex.Clear;
+   key := '';
+   information := '';
+   Reset(inputFile);
+   SizeOfFile := FileSize(inputFile);
+   //Reset(inputFile);
+   information := ReadFormFile(text,SizeOfFile);
+  // showmessage(IntTostr(Length(information)));
+
+   if (RadioButtonLFSR.Checked) and (Length(EditLFSR1.Text) = lengthLFSR) then
+   begin
+      key := GenerateKeyLFSR(SizeOfFile, 1, information, EditLFSR1);
+      memoKeyGenerated.Lines.text := memoKeyGenerated.Lines.text + 'Ключ ' + key;
+      MemoText.Lines.text := information;
+      information := Encryption(key, information);
+   end;
+
+   if (RadioButtonGeffe.Checked) and (Length(EditLFSR1.Text) = lengthLFSR) and
+      (Length(EditLFSR2.Text) = lengthLFSR2) and (Length(EditLFSR3.Text) = lengthLFSR3) then
+   begin
+      LFSRKey := GenerateKeyLFSR(SizeOfFile, 1, information, EditLFSR1);
+      LFSRKey2 := GenerateKeyLFSR(SizeOfFile, 2, information, EditLFSR2);
+      LFSRKey3 := GenerateKeyLFSR(SizeOfFile, 3, information, EditLFSR3);
+      memoKeyGenerated.Lines.Add('LFSR1 ' + LFSRKey);
+      memoKeyGenerated.Lines.Add('LFSR2 ' + LFSRKey2);
+      memoKeyGenerated.Lines.Add('LFSR3 ' + LFSRKey3);
+      Key := EncryprionGeffe(LFSRKey, LFSRKey2, LFSRKey3);
+      memoKeyGenerated.Lines.text := memoKeyGenerated.Lines.text + 'Key ' + key;
+      MemoText.Lines.text := information;
+      information := Encryption(key, information);
+   end;
+   if (RadioButtonRC4.Checked) and (EditRC4Key.Text <> '') then
+   begin
+      information := RC4(EditRC4Key.Text, length(EditRC4Key.Text), text);
+      text := '';
+      for i := 1 to length(information) do
+      begin
+          text := text + HexToBin(IntToHex(ord(information[i]), 2));
+      end;
+      information := text;
+   end;
+   //showmessage(IntTostr(Length(information)));
+   MemoEncodedTex.Lines.text := information;
+   BinToText(information);
+   SaveToFileEncodedInformation(information);
+
+
+
+   //showmessage(inttostr(length(MemoEncodedTex.Lines.text)));
+   //showmessage(inttostr(length(information)));
+   //ShowMessage(IntToStr(length(MemoEncodedBinaryText.Lines.Text)));
+end;
+
+
+
+
+procedure TTi.MemoTextKeyPress(Sender: TObject; var Key: Char);
+begin
+   key := #0;
+end;
+
+procedure TTi.FormCreate(Sender: TObject);
+var
+   i : byte;
+begin
+   //counter := 1;
+   lengthLFSRs[1] := lengthLFSR;
+   lengthLFSRs[2] := lengthLFSR2;
+   lengthLFSRs[3] := lengthLFSR3;
+   for i := 1 to 3 do
+      LFSRs[i] := '';
+end;
+
+procedure CheckKeyPressed(var key : char);
+begin
+   if (key <> '1') and (key <> '0') and (key <> #8) then
+      key := #0;
+end;
+
+
+procedure TTi.EditLFSR1KeyPress(Sender: TObject; var Key: Char);
+begin
+   CheckKeyPressed(key);
+   if (length(EditLFSR1.Text) = lengthLFSRs[1]) and (key <> #8) then
+      key := #0;
+end;
+
+procedure TTi.EditLFSR2KeyPress(Sender: TObject; var Key: Char);
+begin
+   CheckKeyPressed(key);
+   if (length(EditLFSR2.Text) = lengthLFSRs[2]) and (key <> #8) then
+      key := #0;
+end;
+
+procedure TTi.EditLFSR3KeyPress(Sender: TObject; var Key: Char);
+begin
+   CheckKeyPressed(key);
+   if (length(EditLFSR3.Text) = lengthLFSRs[3]) and (key <> #8) then
+      key := #0;
+end;
+
+procedure TTi.EditRC4KeyKeyPress(Sender: TObject; var Key: Char);
+begin
+   if not (key in ['0'..'9']) and ( key <> #8 ) and (key <> #32) then
+      key := #0;
+end;
+
+end.
